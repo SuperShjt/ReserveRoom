@@ -1,0 +1,79 @@
+const formId = '****'; // Replace with your form ID
+const sheetId = '****'; // Updated with your spreadsheet ID
+const sheetName = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet().getName(); // Updated with the correct name of your responses sheet
+
+function onFormSubmit(e) {
+  const sheet = SpreadsheetApp.openById(sheetId).getSheetByName(sheetName);
+  if (!sheet) {
+    Logger.log(`Sheet with name "${sheetName}" not found.`);
+    return;
+  }
+  const responses = sheet.getDataRange().getValues();
+
+  // Initialize counters for each room
+  const counts = {
+    'Room1': 0,
+    'Room2': 0,
+    'Room3': 0,
+    'Room4': 0,
+    'Room5': 0
+  };
+
+  // Count occurrences
+  for (let i = 1; i < responses.length; i++) {
+    const answer = responses[i][1]; // Adjust index based on your form structure
+    if (counts.hasOwnProperty(answer.split(' ')[0])) {
+      counts[answer.split(' ')[0]]++;
+    }
+  }
+
+  // Update the form choices based on the remaining selections
+  updateFormChoices(counts);
+}
+
+function updateFormChoices(counts) {
+  const form = FormApp.openById(formId);
+  const items = form.getItems(FormApp.ItemType.MULTIPLE_CHOICE);
+
+  const roomLimits = {
+    'Room1': 8,
+    'Room2': 8,
+    'Room3': 8,
+    'Room4': 8,
+    'Room5': 6
+  };
+
+  for (const item of items) {
+    const mcItem = item.asMultipleChoiceItem();
+    const choices = mcItem.getChoices();
+
+    // Create new choices based on the updated counts
+    const newChoices = choices
+      .map(choice => {
+        let room = choice.getValue().split(' ')[0]; // Extract room name before parenthesis
+        if (roomLimits.hasOwnProperty(room)) {
+          let remaining = roomLimits[room] - counts[room];
+          if (remaining < 0) remaining = 0;
+          
+          // Only include choices with remaining beds > 0
+          if (remaining > 0) {
+            return mcItem.createChoice(`${room} (${remaining} Bed Left)`);
+          }
+        }
+        return null;
+      })
+      .filter(choice => choice !== null); // Remove null values (choices with 0 beds)
+
+    // Update the choices in the form
+    mcItem.setChoices(newChoices);
+  }
+}
+
+
+function initialize() {
+  const form = FormApp.openById(formId);
+  ScriptApp.newTrigger('onFormSubmit')
+    .forSpreadsheet(SpreadsheetApp.openById(sheetId))
+    .onFormSubmit()
+    .create();
+}
